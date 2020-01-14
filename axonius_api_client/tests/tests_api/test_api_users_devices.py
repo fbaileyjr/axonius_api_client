@@ -12,130 +12,7 @@ import axonius_api_client as axonapi
 from axonius_api_client import exceptions, tools
 
 from .. import utils
-
-FIELD_FORMATS = ["discrete", "image", "date-time", "table", "ip", "subnet", "version"]
-SCHEMA_FIELD_FORMATS = [
-    "image",
-    "date-time",
-    "table",
-    "logo",
-    "tag",
-    "ip",
-    "subnet",
-    "version",
-]
-FIELD_TYPES = ["string", "bool", "array", "integer", "number"]
-
-QUERY_ID = '((internal_axon_id == "{internal_axon_id}"))'.format
-QUERY_EQ = '(({f} == "{v}"))'.format
-QUERY_FIELD_EXISTS = '(({field} == ({{"$exists":true,"$ne": ""}})))'.format
-"""
-# multi
-((internal_axon_id == ({"$exists":true,"$ne":""})))
-    and
-((specific_data.data.username == ({"$exists":true,"$ne":""})))
-    and
-((specific_data.data.mail == ({"$exists":true,"$ne":""})))
-
-# single
-((internal_axon_id == ({"$exists":true,"$ne":""})))
-
-"""
-
-USERS_TEST_DATA = {
-    "adapters": [
-        {"search": "generic", "exp": "generic"},
-        {"search": "active_directory_adapter", "exp": "active_directory"},
-        {"search": "active_directory", "exp": "active_directory"},
-    ],
-    "single_field": {"search": "username", "exp": "specific_data.data.username"},
-    "fields": [
-        {"search": "username", "exp": ["specific_data.data.username"]},
-        {"search": "generic:username", "exp": ["specific_data.data.username"]},
-        {"search": "mail", "exp": ["specific_data.data.mail"]},
-        {"search": "generic:mail", "exp": ["specific_data.data.mail"]},
-        {
-            "search": "generic:mail,username",
-            "exp": ["specific_data.data.mail", "specific_data.data.username"],
-        },
-        {
-            "search": "active_directory:username",
-            "exp": ["adapters_data.active_directory_adapter.username"],
-        },
-        {
-            "search": "adapters_data.active_directory_adapter.username",
-            "exp": ["adapters_data.active_directory_adapter.username"],
-        },
-        {
-            "search": "*,*,username",
-            "exp": ["specific_data", "specific_data.data.username"],
-        },
-    ],
-    "val_fields": [
-        {
-            "search": ["active_directory:username", "generic:username", "mail"],
-            "exp": [
-                "adapters_data.active_directory_adapter.username",
-                "specific_data.data.username",
-                "specific_data.data.mail",
-            ],
-        }
-    ],
-}
-
-DEVICES_TEST_DATA = {
-    "adapters": [
-        {"search": "generic", "exp": "generic"},
-        {"search": "active_directory_adapter", "exp": "active_directory"},
-        {"search": "active_directory", "exp": "active_directory"},
-    ],
-    "single_field": {"search": "hostname", "exp": "specific_data.data.hostname"},
-    "fields": [
-        {
-            "search": "network_interfaces.ips",
-            "exp": ["specific_data.data.network_interfaces.ips"],
-        },
-        {
-            "search": "generic:network_interfaces.ips",
-            "exp": ["specific_data.data.network_interfaces.ips"],
-        },
-        {"search": "hostname", "exp": ["specific_data.data.hostname"]},
-        {"search": "generic:hostname", "exp": ["specific_data.data.hostname"]},
-        {
-            "search": "generic:hostname,network_interfaces.ips",
-            "exp": [
-                "specific_data.data.hostname",
-                "specific_data.data.network_interfaces.ips",
-            ],
-        },
-        {
-            "search": "active_directory:hostname",
-            "exp": ["adapters_data.active_directory_adapter.hostname"],
-        },
-        {
-            "search": "adapters_data.active_directory_adapter.hostname",
-            "exp": ["adapters_data.active_directory_adapter.hostname"],
-        },
-        {
-            "search": "*,*,hostname",
-            "exp": ["specific_data", "specific_data.data.hostname"],
-        },
-    ],
-    "val_fields": [
-        {
-            "search": [
-                "active_directory:hostname",
-                "generic:hostname",
-                "network_interfaces.ips",
-            ],
-            "exp": [
-                "adapters_data.active_directory_adapter.hostname",
-                "specific_data.data.hostname",
-                "specific_data.data.network_interfaces.ips",
-            ],
-        }
-    ],
-}
+from . import meta
 
 
 class Base(object):
@@ -165,9 +42,9 @@ class Base(object):
         api_type = api._router._object_type
 
         if api_type == "users":
-            api.TEST_DATA = USERS_TEST_DATA
+            api.TEST_DATA = meta.objects.USERS_TEST_DATA
         else:
-            api.TEST_DATA = DEVICES_TEST_DATA
+            api.TEST_DATA = meta.objects.DEVICES_TEST_DATA
 
         api.ALL_FIELDS = api.fields.get()
 
@@ -178,7 +55,7 @@ class Base(object):
     ):
         """Pass."""
         if not query and refetch:
-            query = QUERY_ID(**refetch)
+            query = meta.objects.QUERY_ID(**refetch)
 
         if not query:
             if not with_fields:
@@ -186,7 +63,9 @@ class Base(object):
 
             query_fields = tools.listify(with_fields)
             query_fields = [x for x in query_fields if x not in ["labels"]]
-            query_lines = [QUERY_FIELD_EXISTS(field=x) for x in query_fields]
+            query_lines = [
+                meta.objects.QUERY_FIELD_EXISTS(field=x) for x in query_fields
+            ]
             query = " and ".join(query_lines)
 
         if not fields:
@@ -408,7 +287,7 @@ class Single(Base):
         asset = self.get_single_asset(apiobj=apiobj, fields=specfield)
         asset_value = asset[specfield]
         value = tools.listify(obj=asset_value)[0]
-        query_pre = "{} and ".format(QUERY_FIELD_EXISTS(field=specfield))
+        query_pre = "{} and ".format(meta.objects.QUERY_FIELD_EXISTS(field=specfield))
         found = getattr(apiobj, specmethod)(
             value=value, query_pre=query_pre, match_count=1, fields=specfield
         )
@@ -463,7 +342,7 @@ class TestDevices(Single):
         asset_value = asset[specfield]
 
         value = tools.listify(obj=asset_value)[0]
-        query_pre = "{} and ".format(QUERY_FIELD_EXISTS(field=findfield))
+        query_pre = "{} and ".format(meta.objects.QUERY_FIELD_EXISTS(field=findfield))
 
         found = apiobj.get_by_subnet(
             value=value, max_rows=1, fields=findfield, query_pre=query_pre,
@@ -486,7 +365,7 @@ class TestDevices(Single):
         asset_value = asset[specfield]
 
         value = tools.listify(obj=asset_value)[0]
-        query_pre = "{} and ".format(QUERY_FIELD_EXISTS(field=findfield))
+        query_pre = "{} and ".format(meta.objects.QUERY_FIELD_EXISTS(field=findfield))
 
         found = apiobj.get_by_subnet(
             value=value,
@@ -851,7 +730,7 @@ class TestSavedQuery(Base):
 
         asset = self.get_single_asset(apiobj=apiobj, query=None, refetch=None)
 
-        query = QUERY_ID(**asset)
+        query = meta.objects.QUERY_ID(**asset)
 
         added = apiobj.saved_query.add(name=name, query=query)
         assert isinstance(added, dict)
@@ -1092,7 +971,7 @@ class TestSavedQuery(Base):
 
         asset = self.get_single_asset(apiobj=apiobj, query=None, refetch=None)
 
-        query = QUERY_ID(**asset)
+        query = meta.objects.QUERY_ID(**asset)
 
         fields = [apiobj.TEST_DATA["single_field"]["exp"]]
 
@@ -1119,7 +998,7 @@ class TestSavedQuery(Base):
 
         asset = self.get_single_asset(apiobj=apiobj, query=None, refetch=None)
 
-        query = QUERY_ID(**asset)
+        query = meta.objects.QUERY_ID(**asset)
 
         added = apiobj.saved_query.add(name=name, query=query)
         assert isinstance(added, dict)
@@ -1138,7 +1017,7 @@ class TestSavedQuery(Base):
         single_field = apiobj.TEST_DATA["single_field"]
         asset = self.get_single_asset(apiobj=apiobj, query=None, refetch=None)
 
-        query = QUERY_ID(**asset)
+        query = meta.objects.QUERY_ID(**asset)
 
         added = apiobj.saved_query.add(
             name=name, query=query, sort=single_field["search"]
@@ -1163,7 +1042,7 @@ class TestSavedQuery(Base):
         column_filters = {single_field["search"]: "a"}
         exp_column_filters = {single_field["exp"]: "a"}
 
-        query = QUERY_ID(**asset)
+        query = meta.objects.QUERY_ID(**asset)
 
         added = apiobj.saved_query.add(
             name=name, query=query, column_filters=column_filters
@@ -1178,122 +1057,6 @@ class TestSavedQuery(Base):
 
         with pytest.raises(exceptions.ValueNotFound):
             apiobj.saved_query.get_by_name(name)
-
-
-@pytest.mark.parametrize(
-    "apicls", [(axonapi.api.Users), (axonapi.Devices)], scope="class"
-)
-class TestParsedFields(Base):
-    """Pass."""
-
-    def test_fields(self, apiobj):
-        """Pass."""
-        raw = apiobj.fields._get()
-        parser = axonapi.api.users_devices.ParserFields(raw=raw, parent=apiobj)
-        fields = parser.parse()
-
-        with pytest.raises(exceptions.ApiError):
-            parser._exists("generic", fields, "dumb test")
-
-        assert isinstance(fields, dict)
-
-        for aname, afields in fields.items():
-            assert not aname.endswith("_adapter")
-            assert isinstance(afields, dict)
-
-            if aname == "generic":
-                gall_data = afields.pop("all_data")
-                assert isinstance(gall_data, dict)
-
-                gall_data_name = gall_data.pop("name")
-                gall_data_type = gall_data.pop("type")
-                gall_data_prefix = gall_data.pop("adapter_prefix")
-                gall_data_title = gall_data.pop("title")
-
-                assert not gall_data, list(gall_data)
-                assert gall_data_name == "specific_data.data"
-                assert gall_data_type == "array"
-                assert gall_data_prefix == "specific_data"
-                assert gall_data_title == "All data subsets for generic adapter"
-
-                gall = afields.pop("all")
-                assert isinstance(gall, dict)
-
-                gall_name = gall.pop("name")
-                gall_type = gall.pop("type")
-                gall_prefix = gall.pop("adapter_prefix")
-                gall_title = gall.pop("title")
-
-                assert not gall, list(gall)
-                assert gall_name == "specific_data"
-                assert gall_type == "array"
-                assert gall_prefix == "specific_data"
-                assert gall_title == "All data for generic adapter"
-
-            else:
-                # no longer works as of 2.1.2 - unsure why
-                # graw = afields.pop("raw")
-                # assert isinstance(graw, dict)
-                # assert graw["name"].endswith(".raw")
-
-                gall = afields.pop("all")
-                assert isinstance(gall, dict)
-                assert gall["name"] == "adapters_data.{}_adapter".format(aname)
-
-            for fname, finfo in afields.items():
-                self.val_field(fname, finfo, aname)
-
-    def val_field(self, fname, finfo, aname):
-        """Pass."""
-        assert isinstance(finfo, dict)
-
-        # common
-        name = finfo.pop("name")
-        type = finfo.pop("type")
-        prefix = finfo.pop("adapter_prefix")
-        title = finfo.pop("title")
-
-        assert isinstance(name, tools.STR) and name
-        assert isinstance(title, tools.STR) and title
-        assert isinstance(prefix, tools.STR) and prefix
-        assert isinstance(type, tools.STR) and type
-
-        # uncommon
-        items = finfo.pop("items", {})
-        sort = finfo.pop("sort", False)
-        unique = finfo.pop("unique", False)
-        branched = finfo.pop("branched", False)
-        enums = finfo.pop("enum", [])
-        description = finfo.pop("description", "")
-        dynamic = finfo.pop("dynamic", False)
-        format = finfo.pop("format", "")
-
-        assert isinstance(items, dict)
-        assert isinstance(sort, bool)
-        assert isinstance(unique, bool)
-        assert isinstance(branched, bool)
-        assert isinstance(enums, tools.LIST)
-        assert isinstance(description, tools.STR)
-        assert isinstance(dynamic, bool)
-        assert isinstance(format, tools.STR)
-
-        assert not finfo, list(finfo)
-
-        assert type in FIELD_TYPES, type
-
-        if name not in ["labels", "adapters", "internal_axon_id"]:
-            if aname == "generic":
-                assert name.startswith("specific_data")
-            else:
-                assert name.startswith(prefix)
-
-        for enum in enums:
-            assert isinstance(enum, tools.STR) or tools.is_int(enum)
-
-        if format:
-            assert format in FIELD_FORMATS, format
-
-        val_items(aname="{}:{}".format(aname, fname), items=items)
 
 
 @pytest.mark.parametrize(
@@ -1357,7 +1120,7 @@ class TestRawFields(Base):
 
         for item in items:
             assert item
-            val_items(aname=aname, items=item)
+            self.val_items(aname=aname, items=item)
 
     def val_fields(self, aname, afields):
         """Pass."""
@@ -1399,64 +1162,63 @@ class TestRawFields(Base):
             for enum in enums:
                 assert isinstance(enum, tools.STR) or tools.is_int(enum)
 
-            val_items(aname="{}:{}".format(aname, name), items=items)
+            self.val_items(aname="{}:{}".format(aname, name), items=items)
 
+    def val_items(self, aname, items):
+        """Pass."""
+        assert isinstance(items, dict)
 
-def val_items(aname, items):
-    """Pass."""
-    assert isinstance(items, dict)
+        if items:
+            # common
+            type = items.pop("type")
 
-    if items:
-        # common
-        type = items.pop("type")
+            assert isinstance(type, tools.STR) and type
+            assert type in meta.fields.FIELD_TYPES, type
 
-        assert isinstance(type, tools.STR) and type
-        assert type in FIELD_TYPES, type
+            # uncommon
+            enums = items.pop("enum", [])
+            fformat = items.pop("format", "")
+            iitems = items.pop("items", [])
+            name = items.pop("name", "")
+            title = items.pop("title", "")
+            description = items.pop("description", "")
+            branched = items.pop("branched", False)
+            dynamic = items.pop("dynamic", False)
+            source = items.pop("source", {})
+            assert isinstance(source, dict)
 
-        # uncommon
-        enums = items.pop("enum", [])
-        fformat = items.pop("format", "")
-        iitems = items.pop("items", [])
-        name = items.pop("name", "")
-        title = items.pop("title", "")
-        description = items.pop("description", "")
-        branched = items.pop("branched", False)
-        dynamic = items.pop("dynamic", False)
-        source = items.pop("source", {})
-        assert isinstance(source, dict)
+            if source:
+                source_key = source.pop("key")
+                assert isinstance(source_key, tools.STR)
 
-        if source:
-            source_key = source.pop("key")
-            assert isinstance(source_key, tools.STR)
+                source_options = source.pop("options")
+                assert isinstance(source_options, dict)
 
-            source_options = source.pop("options")
-            assert isinstance(source_options, dict)
+                options_allow = source_options.pop("allow-custom-option")
+                assert isinstance(options_allow, bool)
 
-            options_allow = source_options.pop("allow-custom-option")
-            assert isinstance(options_allow, bool)
+                assert not source, source
+                assert not source_options, source_options
 
-            assert not source, source
-            assert not source_options, source_options
+            if fformat:
+                assert fformat in meta.fields.SCHEMA_FIELD_FORMATS, fformat
 
-        if fformat:
-            assert fformat in SCHEMA_FIELD_FORMATS, fformat
+            assert isinstance(enums, tools.LIST)
+            assert isinstance(iitems, tools.LIST) or isinstance(iitems, dict)
+            assert isinstance(fformat, tools.STR)
+            assert isinstance(name, tools.STR)
+            assert isinstance(title, tools.STR)
+            assert isinstance(description, tools.STR)
+            assert isinstance(branched, bool)
+            assert isinstance(dynamic, bool)
 
-        assert isinstance(enums, tools.LIST)
-        assert isinstance(iitems, tools.LIST) or isinstance(iitems, dict)
-        assert isinstance(fformat, tools.STR)
-        assert isinstance(name, tools.STR)
-        assert isinstance(title, tools.STR)
-        assert isinstance(description, tools.STR)
-        assert isinstance(branched, bool)
-        assert isinstance(dynamic, bool)
+            assert not items, list(items)
 
-        assert not items, list(items)
+            for enum in enums:
+                assert isinstance(enum, tools.STR) or tools.is_int(enum)
 
-        for enum in enums:
-            assert isinstance(enum, tools.STR) or tools.is_int(enum)
-
-        if isinstance(iitems, dict):
-            val_items(aname=aname, items=iitems)
-        else:
-            for iitem in iitems:
-                val_items(aname=aname, items=iitem)
+            if isinstance(iitems, dict):
+                self.val_items(aname=aname, items=iitems)
+            else:
+                for iitem in iitems:
+                    self.val_items(aname=aname, items=iitem)

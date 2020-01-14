@@ -7,7 +7,7 @@ import time
 import warnings
 
 from .. import constants, exceptions, tools
-from . import mixins, routers
+from . import mixins, routers, parsers
 
 
 class Adapters(mixins.Model, mixins.Mixins):
@@ -51,7 +51,7 @@ class Adapters(mixins.Model, mixins.Mixins):
 
         """
         raw = self._get()
-        parser = ParserAdapters(raw=raw, parent=self)
+        parser = parsers.Adapters(raw=raw, parent=self)
         adapters = parser.parse()
         return adapters
 
@@ -520,6 +520,10 @@ class Adapters(mixins.Model, mixins.Mixins):
         ret["filename"] = name
         return ret
 
+    def _stringify(self, adapter):
+        """Pass."""
+        return "adapter {name} on node {node_name}".format(**adapter)
+
 
 class Cnx(mixins.Child):
     """Adapter connections API."""
@@ -542,7 +546,7 @@ class Cnx(mixins.Child):
                 or a single adapter returned from :meth:Adapt
             config (dict): Configuration of connection to add.
             parse_config (bool, optional): Check the supplied ``config`` using
-                :meth:`ParserCnxConfig.parse`. Defaults to: True.
+                :meth:`ParserConfig.parse`. Defaults to: True.
             node (str, optional): Name of node running ``adapter``.
                 Defaults to: "master".
             retry (int, optional): Number of times to retry fetching the newly added
@@ -565,8 +569,12 @@ class Cnx(mixins.Child):
         adapter = self._parent.get_single(adapter=adapter, node=node)
 
         if parse_config:
-            parser = ParserCnxConfig(raw=config, parent=self)
-            config = parser.parse(adapter=adapter, settings=adapter["cnx_settings"])
+            parser = parsers.Config(raw=config, parent=self)
+            config = parser.parse(
+                source=self._parent._stringify(adapter=adapter),
+                settings=adapter["cnx_settings"],
+                adapter=adapter,
+            )
 
         response = self._add(
             adapter_name=adapter["name_raw"], node_id=adapter["node_id"], config=config
@@ -1299,8 +1307,12 @@ class Cnx(mixins.Child):
 
         if parse_config and new_config:
             adapter = self._parent.get_single(adapter=cnx["adapter_name"])
-            parser = ParserCnxConfig(raw=new_config, parent=self)
-            new_config = parser.parse(adapter=adapter, settings=adapter["cnx_settings"])
+            parser = parsers.Config(raw=new_config, parent=self)
+            new_config = parser.parse(
+                source=self._parent._stringify(adapter=adapter),
+                settings=adapter["cnx_settings"],
+                adapter=adapter,
+            )
 
         msg = [
             "Updating cnx id={id}",
@@ -1465,348 +1477,6 @@ class Cnx(mixins.Child):
             error_json_bad_status=False,
             error_status=False,
         )
-
-
-class ParserCnxConfig(mixins.Parser):
-    """Pass."""
-
-    def parse(self, adapter, settings):
-        """Pass.
-
-        Args:
-            adapter (TYPE): Description
-            settings (TYPE): Description
-
-        Returns:
-            TYPE: Description
-
-        Raises:
-            exceptions.CnxSettingMissing: Description
-
-        """
-        new_config = {}
-
-        for name, schema in settings.items():
-            required = schema["required"]
-
-            value = self._raw.get(name, None)
-
-            has_value = name in self._raw
-            has_default = "default" in schema
-
-            req = "required" if required else "optional"
-            msg = "Processing {req} setting {n!r} with value of {v!r}, schema: {ss}"
-            msg = msg.format(req=req, n=name, v=value, ss=schema)
-            self._log.debug(msg)
-
-            if not has_value and not has_default:
-                if not required:
-                    continue
-
-                raise exceptions.CnxSettingMissing(
-                    name=name, value=value, schema=schema, adapter=adapter
-                )
-
-            if not has_value and has_default:
-                value = schema["default"]
-
-            new_config[name] = self.check_value(
-                name=name, value=value, schema=schema, adapter=adapter
-            )
-
-        return new_config
-
-    def check_value(self, name, value, schema, adapter):
-        """Pass.
-
-        Args:
-            name (TYPE): Description
-            value (TYPE): Description
-            schema (TYPE): Description
-            adapter (TYPE): Description
-
-        Returns:
-            TYPE: Description
-
-        Raises:
-            exceptions.CnxSettingInvalidChoice: Description
-            exceptions.CnxSettingInvalidType: Description
-            exceptions.CnxSettingUnknownType: Description
-
-        """
-        type_str = schema["type"]
-        enum = schema.get("enum", [])
-
-        if value == constants.SETTING_UNCHANGED:
-            return value
-
-        if enum and value not in enum:
-            raise exceptions.CnxSettingInvalidChoice(
-                name=name, value=value, schema=schema, enum=enum, adapter=adapter
-            )
-
-        if type_str == "file":
-            return self.check_file(
-                name=name, value=value, schema=schema, adapter=adapter
-            )
-        elif type_str == "bool":
-            return tools.coerce_bool(obj=value)
-        elif type_str in ["number", "integer"]:
-            return tools.coerce_int(obj=value)
-        elif type_str == "array":
-            if isinstance(value, tools.STR):
-                value = [x.strip() for x in value.split(",")]
-            if isinstance(value, tools.LIST) and all(
-                [isinstance(x, tools.STR) for x in value]
-            ):
-                return value
-        elif type_str == "string":
-            if isinstance(value, tools.STR):
-                return value
-        else:
-            raise exceptions.CnxSettingUnknownType(
-                name=name,
-                value=value,
-                schema=schema,
-                type_str=type_str,
-                adapter=adapter,
-            )
-
-        raise exceptions.CnxSettingInvalidType(
-            name=name, value=value, schema=schema, adapter=adapter, mustbe=type_str
-        )
-
-    def check_file(self, name, value, schema, adapter):
-        """Pass.
-
-        Args:
-            name (TYPE): Description
-            value (TYPE): Description
-            schema (TYPE): Description
-            adapter (TYPE): Description
-
-        Returns:
-            TYPE: Description
-
-        Raises:
-            exceptions.CnxSettingFileMissing: Description
-            exceptions.CnxSettingInvalidType: Description
-
-        """
-        is_str = isinstance(value, tools.STR)
-        is_dict = isinstance(value, dict)
-        is_path = isinstance(value, tools.pathlib.Path)
-
-        if not any([is_dict, is_str, is_path]):
-            raise exceptions.CnxSettingInvalidType(
-                name=name,
-                value=value,
-                schema=schema,
-                mustbe="dict or str",
-                adapter=adapter,
-            )
-
-        if is_str or is_path:
-            value = {"filepath": format(value)}
-
-        uuid = value.get("uuid", None)
-        filename = value.get("filename", None)
-        filepath = value.get("filepath", None)
-        filecontent = value.get("filecontent", None)
-        filecontent_type = value.get("filecontent_type", None)
-
-        if uuid and filename:
-            return {"uuid": uuid, "filename": filename}
-
-        if filepath:
-            uploaded = self._parent._parent.upload_file_path(
-                field=name,
-                adapter=adapter,
-                path=filepath,
-                content_type=filecontent_type,
-            )
-
-            return {"uuid": uploaded["uuid"], "filename": uploaded["filename"]}
-
-        if filecontent and filename:
-            uploaded = self._parent._parent.upload_file_str(
-                field=name,
-                adapter=adapter,
-                name=filename,
-                content=filecontent,
-                content_type=filecontent_type,
-            )
-            return {"uuid": uploaded["uuid"], "filename": uploaded["filename"]}
-
-        raise exceptions.CnxSettingFileMissing(
-            name=name, value=value, schema=schema, adapter=adapter
-        )
-
-
-class ParserAdapters(mixins.Parser):
-    """Pass."""
-
-    def parse(self):
-        """Pass.
-
-        Returns:
-            TYPE: Description
-
-        """
-        parsed = []
-
-        for name, raw_adapters in self._raw.items():
-            for raw in raw_adapters:
-                adapter = self._adapter(name=name, raw=raw)
-                parsed.append(adapter)
-
-        return parsed
-
-    def _adapter(self, name, raw):
-        """Pass.
-
-        Args:
-            name (TYPE): Description
-            raw (TYPE): Description
-
-        Returns:
-            TYPE: Description
-
-        """
-        parsed = {
-            "name": tools.strip_right(obj=name, fix="_adapter"),
-            "name_raw": name,
-            "name_plugin": raw["unique_plugin_name"],
-            "node_name": raw["node_name"],
-            "node_id": raw["node_id"],
-            "status_raw": raw["status"],
-            "features": raw["supported_features"],
-        }
-
-        if parsed["status_raw"] == "success":
-            parsed["status"] = True
-        elif parsed["status_raw"] == "warning":
-            parsed["status"] = False
-        else:
-            parsed["status"] = None
-
-        cnx = self._cnx(raw=raw, parent=parsed)
-        cnx_ok = [x for x in cnx if x["status"] is True]
-        cnx_bad = [x for x in cnx if x["status"] is False]
-
-        parsed["cnx"] = cnx
-        parsed["cnx_ok"] = cnx_ok
-        parsed["cnx_bad"] = cnx_bad
-        parsed["cnx_settings"] = self._cnx_settings(raw=raw)
-        parsed["cnx_count"] = len(cnx)
-        parsed["cnx_count_ok"] = len(cnx_ok)
-        parsed["cnx_count_bad"] = len(cnx_bad)
-        parsed["settings"] = self._adapter_settings(raw=raw, base=False)
-        parsed["adv_settings"] = self._adapter_settings(raw=raw, base=True)
-
-        return parsed
-
-    def _adapter_settings(self, raw, base=True):
-        """Pass.
-
-        Args:
-            raw (TYPE): Description
-            base (bool, optional): Description
-
-        Returns:
-            TYPE: Description
-
-        """
-        settings = {}
-
-        for raw_name, raw_settings in raw["config"].items():
-            is_base = raw_name == "AdapterBase"
-            if ((is_base and base) or (not is_base and not base)) and not settings:
-                schema = raw_settings["schema"]
-                items = schema["items"]
-                required = schema["required"]
-                config = raw_settings["config"]
-
-                for item in items:
-                    setting_name = item["name"]
-                    parsed_settings = {k: v for k, v in item.items()}
-                    parsed_settings["required"] = setting_name in required
-                    parsed_settings["value"] = config.get(setting_name, None)
-                    settings[setting_name] = parsed_settings
-
-        return settings
-
-    def _cnx_settings(self, raw):
-        """Pass.
-
-        Args:
-            raw (TYPE): Description
-
-        Returns:
-            TYPE: Description
-
-        """
-        settings = {}
-
-        schema = raw["schema"]
-        items = schema["items"]
-        required = schema["required"]
-
-        for item in items:
-            setting_name = item["name"]
-            settings[setting_name] = {k: v for k, v in item.items()}
-            settings[setting_name]["required"] = setting_name in required
-
-        return settings
-
-    def _cnx(self, raw, parent):
-        """Pass.
-
-        Args:
-            raw (TYPE): Description
-            parent (TYPE): Description
-
-        Returns:
-            TYPE: Description
-
-        """
-        cnx = []
-
-        cnx_settings = self._cnx_settings(raw=raw)
-
-        for raw_cnx in raw["clients"]:
-            raw_config = raw_cnx["client_config"]
-            parsed_settings = {}
-
-            for setting_name, setting_config in cnx_settings.items():
-                value = raw_config.get(setting_name, None)
-
-                if value == constants.SETTING_UNCHANGED:
-                    value = "__HIDDEN__"
-
-                if setting_name not in raw_config:
-                    value = "__NOTSET__"
-
-                parsed_settings[setting_name] = setting_config.copy()
-                parsed_settings[setting_name]["value"] = value
-
-            pcnx = {}
-            pcnx["node_name"] = parent["node_name"]
-            pcnx["node_id"] = parent["node_id"]
-            pcnx["adapter_name"] = parent["name"]
-            pcnx["adapter_name_raw"] = parent["name_raw"]
-            pcnx["adapter_status"] = parent["status"]
-            pcnx["config"] = parsed_settings
-            pcnx["config_raw"] = raw_config
-            pcnx["status_raw"] = raw_cnx["status"]
-            pcnx["status"] = raw_cnx["status"] == "success"
-            pcnx["id"] = raw_cnx["client_id"]
-            pcnx["uuid"] = raw_cnx["uuid"]
-            pcnx["date_fetched"] = raw_cnx["date_fetched"]
-            pcnx["error"] = raw_cnx["error"]
-            cnx.append(pcnx)
-
-        return cnx
 
 
 def validate_csv(name, content, is_users=False, is_installed_sw=False):

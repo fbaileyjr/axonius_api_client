@@ -7,7 +7,7 @@ import re
 import ipaddress
 
 from .. import constants, exceptions, tools
-from . import adapters, mixins, routers
+from . import adapters, mixins, routers, parsers
 
 
 class UserDeviceMixin(mixins.ModelUserDevice, mixins.Mixins):
@@ -1235,7 +1235,7 @@ class Fields(mixins.Child):
     def get(self):
         """Pass."""
         raw = self._get()
-        parser = ParserFields(raw=raw, parent=self)
+        parser = parsers.Fields(raw=raw, parent=self)
         return parser.parse()
 
     def validate(
@@ -1306,83 +1306,3 @@ class Reports(mixins.Child):
             new_rows.append(row)
 
         return new_rows
-
-
-class ParserFields(mixins.Parser):
-    """Pass."""
-
-    def _exists(self, item, source, desc):
-        """Pass."""
-        if item in source:
-            msg = "{d} {i!r} already exists, duplicate??"
-            msg = msg.format(d=desc, i=item)
-            raise exceptions.ApiError(msg)
-
-    def _generic(self):
-        """Pass."""
-        fields = {
-            "all_data": {
-                "name": "specific_data.data",
-                "title": "All data subsets for generic adapter",
-                "type": "array",
-                "adapter_prefix": "specific_data",
-            },
-            "all": {
-                "name": "specific_data",
-                "title": "All data for generic adapter",
-                "type": "array",
-                "adapter_prefix": "specific_data",
-            },
-        }
-
-        for field in self._raw["generic"]:
-            field["adapter_prefix"] = "specific_data"
-            field_name = tools.strip_left(
-                obj=field["name"], fix="specific_data.data"
-            ).strip(".")
-            self._exists(field_name, fields, "Generic field")
-            fields[field_name] = field
-
-        return fields
-
-    def _adapter(self, name, raw_fields):
-        short_name = tools.strip_right(obj=name, fix="_adapter")
-
-        prefix = "adapters_data.{adapter_name}"
-        prefix = prefix.format(adapter_name=name)
-
-        fields = {
-            "all": {
-                "name": prefix,
-                "title": "All data for {} adapter".format(prefix),
-                "type": "array",
-                "adapter_prefix": prefix,
-            },
-            # this does not work any more as of 2.1.2 - unsure why
-            # "raw": {
-            #     "name": "{}.raw".format(prefix),
-            #     "title": "All raw data for {} adapter".format(prefix),
-            #     "type": "array",
-            #     "adapter_prefix": prefix,
-            # },
-        }
-
-        for field in raw_fields:
-            field["adapter_prefix"] = prefix
-            field_name = tools.strip_left(obj=field["name"], fix=prefix).strip(".")
-            self._exists(field_name, fields, "Adapter {} field".format(short_name))
-            fields[field_name] = field
-
-        return short_name, fields
-
-    def parse(self):
-        """Pass."""
-        ret = {}
-        ret["generic"] = self._generic()
-
-        for name, raw_fields in self._raw["specific"].items():
-            short_name, fields = self._adapter(name=name, raw_fields=raw_fields)
-            self._exists(short_name, ret, "Adapter {}".format(name))
-            ret[short_name] = fields
-
-        return ret

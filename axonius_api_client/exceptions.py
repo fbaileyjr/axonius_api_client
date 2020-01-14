@@ -212,21 +212,24 @@ class CnxConnectFailure(CnxError):
         super(CnxConnectFailure, self).__init__(msg)
 
 
-class CnxSettingError(CnxError):
+class SettingError(ApiError):
     """Pass."""
 
-    def __init__(self, name, value, schema, adapter, error):
+    def __init__(self, name, value, schema, error, source=None):
         """Pass."""
         from . import tools
 
         self.name = name
         self.value = value
         self.schema = schema
-        self.adapter = adapter
+        self.source = source
         self.error = error
 
+        # if adapter:
+        # first_msg = "Error with {req} setting {n!r} on adapter {a!r} on node {an!r}"
+
         msg = [
-            "Error with {req} setting {n!r} on adapter {a!r} on node {an!r}",
+            "Error with {req} setting {n!r} in {source}",
             "Supplied value of {v!r}",
             "Setting schema:",
             "{ss}",
@@ -234,8 +237,9 @@ class CnxSettingError(CnxError):
         ]
 
         msg = tools.join_cr(obj=msg).format(
-            a=adapter["name"],
-            an=adapter["node_name"],
+            source=source,
+            # a=adapter["name"],
+            # an=adapter["node_name"],
             req="required" if schema["required"] else "optional",
             n=name,
             v=value,
@@ -243,26 +247,26 @@ class CnxSettingError(CnxError):
             ss=tools.json_dump(obj=schema, error=False),
         )
 
-        super(CnxSettingError, self).__init__(msg)
+        super(SettingError, self).__init__(msg)
 
 
-class CnxSettingMissing(CnxSettingError):
+class SettingMissing(SettingError):
     """Pass."""
 
-    def __init__(self, name, value, schema, adapter):
+    def __init__(self, name, value, schema, source):
         """Pass."""
         error = "Setting {n!r} was not supplied and no default value defined"
         error = error.format(n=name)
 
-        super(CnxSettingMissing, self).__init__(
-            name=name, value=value, schema=schema, error=error, adapter=adapter
+        super(SettingMissing, self).__init__(
+            name=name, value=value, schema=schema, error=error, source=source
         )
 
 
-class CnxSettingFileMissing(CnxSettingError):
+class SettingFileMissing(SettingError):
     """Pass."""
 
-    def __init__(self, name, value, schema, adapter):
+    def __init__(self, name, value, schema, source):
         """Pass."""
         from . import tools
 
@@ -292,53 +296,53 @@ class CnxSettingFileMissing(CnxSettingError):
         error = "File setting {n!r} with value {v!r} is invalid, examples: {ex}"
         error = error.format(n=name, v=value, ex=examples)
 
-        super(CnxSettingFileMissing, self).__init__(
-            name=name, value=value, schema=schema, error=error, adapter=adapter
+        super(SettingFileMissing, self).__init__(
+            name=name, value=value, schema=schema, error=error, source=source
         )
 
 
-class CnxSettingInvalidType(CnxSettingError):
+class SettingInvalidType(SettingError):
     """Pass."""
 
-    def __init__(self, name, value, schema, mustbe, adapter):
+    def __init__(self, name, value, schema, mustbe, source=None):
         """Pass."""
         self.mustbe = mustbe
 
         error = "Invalid type supplied {t!r}, must be type {mt!r}"
         error = error.format(t=type(value).__name__, mt=mustbe)
 
-        super(CnxSettingInvalidType, self).__init__(
-            name=name, value=value, schema=schema, error=error, adapter=adapter
+        super(SettingInvalidType, self).__init__(
+            name=name, value=value, schema=schema, error=error, source=source
         )
 
 
-class CnxSettingInvalidChoice(CnxSettingError):
+class SettingInvalidChoice(SettingError):
     """Pass."""
 
-    def __init__(self, name, value, enum, schema, adapter):
+    def __init__(self, name, value, enum, schema, source=None):
         """Pass."""
         self.enum = enum
 
         error = "Invalid value {v!r}, must be one of {e}"
         error = error.format(v=value, e=enum)
 
-        super(CnxSettingInvalidChoice, self).__init__(
-            name=name, value=value, schema=schema, error=error, adapter=adapter
+        super(SettingInvalidChoice, self).__init__(
+            name=name, value=value, schema=schema, error=error, source=source
         )
 
 
-class CnxSettingUnknownType(CnxSettingError):
+class SettingUnknownType(SettingError):
     """Pass."""
 
-    def __init__(self, name, value, type_str, schema, adapter):
+    def __init__(self, name, value, type_str, schema, source=None):
         """Pass."""
         self.type_str = type_str
 
         error = "Unknown connection setting type {t!r} in schema"
         error = error.format(t=type_str)
 
-        super(CnxSettingUnknownType, self).__init__(
-            name=name, value=value, schema=schema, error=error, adapter=adapter
+        super(SettingUnknownType, self).__init__(
+            name=name, value=value, schema=schema, error=error, source=source
         )
 
 
