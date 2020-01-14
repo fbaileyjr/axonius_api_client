@@ -21,9 +21,10 @@ class Router(object):
         self._object_type = object_type
         self.root = tools.join_url(base, object_type)
         self._routes = ["root"]
-        for k, v in routes.items():
-            self._routes.append(k)
-            setattr(self, k, tools.join_url(self.root, v))
+        for internal_route, route in routes.items():
+            self._routes.append(internal_route)
+            route = tools.join_url(self.root, route)
+            setattr(self, internal_route, route)
 
     def __str__(self):
         """Show object info.
@@ -94,4 +95,14 @@ class ApiV1(object):
 
     alerts = Router(object_type="alerts", base=base, version=version)
 
-    all_objects = [users, devices, actions, adapters, alerts]
+    discover = Router(
+        object_type="discover",
+        base=base,
+        version=version,
+        lifecycle="lifecycle",
+        start="start",
+        stop="stop",
+    )
+
+    admin = Router(object_type="admin", base=base, version=version,)
+    all_objects = [users, devices, actions, adapters, alerts, discover, admin]

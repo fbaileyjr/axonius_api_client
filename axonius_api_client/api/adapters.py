@@ -18,6 +18,31 @@ class Adapters(mixins.Model, mixins.Mixins):
 
     """
 
+    def config_base(self, adapter, node="master", **kwargs):
+        """Pass."""
+        adapter = self.get_single(adapter=adapter, node=node)
+        base = adapter["adv_settings"]
+
+        base_tmpl = "setting: {name!r}, description: {title!r}, type: {type!r}".format
+        base_str = tools.join_cr(obj=[base_tmpl(**v) for k, v in base.items()])
+
+        if not kwargs:
+            error = "No settings supplied! Valid settings:{settings}"
+            error = error.format(settings=base_str)
+            raise exceptions.ApiError(error)
+
+        for setting, value in kwargs.items():
+            if setting not in base:
+                error = "Invalid setting {setting!r} supplied! Valid settings:{settings}"
+                error = error.format(setting=setting, settings=base_str)
+                raise exceptions.ApiError(error)
+
+        return base
+
+    def config_adapter(self):
+        """Pass."""
+        pass
+
     def get(self):
         """Get the metadata for all adapters.
 

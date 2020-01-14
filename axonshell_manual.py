@@ -40,3 +40,5 @@ if __name__ == "__main__":
     devices = ctx.devices
     users = ctx.users
     adapters = ctx.adapters
+    discover = ctx.discover
+    admin = ctx.admin

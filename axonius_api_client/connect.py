@@ -117,6 +117,22 @@ class Connect(object):
         self._api_args = {"auth": self._auth, "log_level": log_level_api}
 
     @property
+    def admin(self):
+        """Pass."""
+        self.start()
+        if not hasattr(self, "_admin"):
+            self._admin = api.Admin(**self._api_args)
+        return self._admin
+
+    @property
+    def discover(self):
+        """Pass."""
+        self.start()
+        if not hasattr(self, "_discover"):
+            self._discover = api.Discover(**self._api_args)
+        return self._discover
+
+    @property
     def users(self):
         """Pass."""
         self.start()
